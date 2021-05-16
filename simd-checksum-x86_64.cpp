@@ -311,6 +311,7 @@ __attribute__ ((target("sse2"))) MVSTATIC int32 get_checksum1_sse2_32(schar* buf
 }
 
 extern "C" __attribute__ ((target("avx2"))) int32 get_checksum1_avx2(schar* buf, int32 len, int32 i, uint32* ps1, uint32* ps2);
+extern "C" __attribute__ ((target("avx512vnni"))) int32 get_checksum1_avx512_vnni(schar* buf, int32 len, int32 i, uint32* ps1, uint32* ps2);
 
 static int32 get_checksum1_default_1(schar* buf, int32 len, int32 i, uint32* ps1, uint32* ps2)
 {
@@ -337,6 +338,9 @@ static inline uint32 get_checksum1_cpp(char *buf1, int32 len)
     uint32 s1 = 0;
     uint32 s2 = 0;
 
+    // multiples of 64 bytes using AVX512VNNI (if available)
+    i = get_checksum1_avx512_vnni((schar*)buf1, len, i, &s1, &s2);
+    
     // multiples of 64 bytes using AVX2 (if available)
     i = get_checksum1_avx2((schar*)buf1, len, i, &s1, &s2);
 
@@ -403,11 +407,12 @@ int main() {
     unsigned char* buf = (unsigned char*)aligned_alloc(64,BLOCK_LEN);
     for (i = 0; i < BLOCK_LEN; i++) buf[i] = (i + (i % 3) + (i % 11)) % 256;
 
-    benchmark("Auto", get_checksum1_auto, (schar*)buf, BLOCK_LEN);
-    benchmark("Raw-C", get_checksum1_default_1, (schar*)buf, BLOCK_LEN);
-    benchmark("SSE2", get_checksum1_sse2_32, (schar*)buf, BLOCK_LEN);
-    benchmark("SSSE3", get_checksum1_ssse3_32, (schar*)buf, BLOCK_LEN);
-    benchmark("AVX2", get_checksum1_avx2, (schar*)buf, BLOCK_LEN);
+    benchmark("Auto       ", get_checksum1_auto, (schar*)buf, BLOCK_LEN);
+    benchmark("Raw-C      ", get_checksum1_default_1, (schar*)buf, BLOCK_LEN);
+    benchmark("SSE2       ", get_checksum1_sse2_32, (schar*)buf, BLOCK_LEN);
+    benchmark("SSSE3      ", get_checksum1_ssse3_32, (schar*)buf, BLOCK_LEN);
+    benchmark("AVX2       ", get_checksum1_avx2, (schar*)buf, BLOCK_LEN);
+    benchmark("AVX512-VNNI", get_checksum1_avx512_vnni, (schar*)buf, BLOCK_LEN);
 
     free(buf);
     return 0;
