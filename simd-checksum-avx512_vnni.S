@@ -15,7 +15,7 @@ get_checksum1_avx512_vnni:
 	cmp	edx, eax
 	jge	.exit
 	lea	rax, .mul_T2[rip]
-	vmovntdqa zmm7, [rax]  # load T2 multiplication constants
+	vmovdqa64 zmm7, [rax]  # load T2 multiplication constants
 	vpbroadcastb zmm15, [rax+63]
 
 #if CHAR_OFFSET != 0
@@ -39,15 +39,15 @@ get_checksum1_avx512_vnni:
 	add	rdi, 64
 	vpxor	xmm1, xmm1, xmm1 # reset both partial sums accumulators.
 	vpxor	xmm4, xmm4, xmm4
-	xor	rax, rax
-	.p2align 4 		# should fit into the LSD allocation queue.
+	mov	eax, 64
+	.p2align 5 		# should fit into the LSD allocation queue.
 .loop:
 	vpaddd	zmm4, zmm4, zmm6
 	vpdpbusd	zmm6, zmm15, zmm2  # s1 partial sums
 	vmovdqa64	zmm8,  [rdi]	# preload the next 
-	add	rdi, 64
+	prefetcht0	[rdi+448] # prefetch 7 cachelines ahead.
+	add	rdi, rax
 	vpdpbusd	zmm1, zmm7, zmm2  # s2 partial sums
-	prefetcht0	[rdi+384] # prefetch 6 cachelines ahead.
 
 #if CHAR_OFFSET != 0
 	vpaddd zmm6, zmm10, zmm6  #  32*CHAR_OFFSET
@@ -55,7 +55,7 @@ get_checksum1_avx512_vnni:
 #endif
 	vmovdqa64 zmm2, zmm8   # move the next 64 bytes 
 	sub	esi, 1
-	jnz	.loop
+	ja	.loop
 
 	# now we reduce the partial sums.
 	mov	eax, [r8]
@@ -64,6 +64,7 @@ get_checksum1_avx512_vnni:
 	vextracti64x4 ymm3, zmm0, 0x1
 	vpaddd	ymm0, ymm3, ymm0
 	vextracti64x4 ymm2, zmm6, 0x1
+	nop
 	vpaddd	ymm6, ymm2, ymm6
         vpsrldq ymm2, ymm6, 4
 
