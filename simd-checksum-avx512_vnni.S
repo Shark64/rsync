@@ -14,7 +14,10 @@ get_checksum1_avx512_vnni:
 	lea	eax, [rsi-128] # at least 128 bytes to process?
 	cmp	edx, eax
 	jge	.exit
+	nop
 	lea	rax, .mul_T2[rip]
+	add	rdi, rdx
+	or	r9, -1
 	vmovdqa64 zmm7, [rax]  # load T2 multiplication constants
 	vpbroadcastb zmm15, [rax+63]
 
@@ -24,11 +27,8 @@ get_checksum1_avx512_vnni:
 	mov	eax, 528*CHAR_OFFSET
 	vpbroadcastd zmm13, eax
 #endif
-	add	rdi, rdx
-	or	r9, -1
 	mov	eax, edi
 	and	eax, 0x63
-	nop
 	bzhi	r9, r9, rax
 	kmovq	k1, r9
 	vmovdqu8 zmm2{k1}{z}, [rdi]   # preload the first 64 bytes.
@@ -37,34 +37,32 @@ get_checksum1_avx512_vnni:
 	add	edx, esi
 	shr	esi, 6
 	add	rdi, 64
+	mov	eax, 448
 	vpxor	xmm1, xmm1, xmm1 # reset both partial sums accumulators.
 	vpxor	xmm4, xmm4, xmm4
-	mov	eax, 64
+	mov	r9d, [r8]	# preload from *ps2
 	.p2align 5 		# should fit into the LSD allocation queue.
 .loop:
 	vpaddd	zmm4, zmm4, zmm6
 	vpdpbusd	zmm6, zmm15, zmm2  # s1 partial sums
-	vmovdqa64	zmm8,  [rdi]	# preload the next 
-	prefetcht0	[rdi+448] # prefetch 7 cachelines ahead.
-	add	rdi, rax
 	vpdpbusd	zmm1, zmm7, zmm2  # s2 partial sums
+	vmovdqa64	zmm2,  [rdi]	# preload the next 
+	prefetcht0	[rdi+rax] # prefetch 7 cachelines ahead.
+	add	rdi, 64
 
 #if CHAR_OFFSET != 0
 	vpaddd zmm6, zmm10, zmm6  #  32*CHAR_OFFSET
 	vpaddd zmm1, zmm13, zmm1  # 528*CHAR_OFFSET
 #endif
-	vmovdqa64 zmm2, zmm8   # move the next 64 bytes 
 	sub	esi, 1
 	ja	.loop
 
 	# now we reduce the partial sums.
-	mov	eax, [r8]
 	vpslld  zmm4, zmm4, 6
         vpaddd  zmm0, zmm4, zmm1
 	vextracti64x4 ymm3, zmm0, 0x1
 	vpaddd	ymm0, ymm3, ymm0
 	vextracti64x4 ymm2, zmm6, 0x1
-	nop
 	vpaddd	ymm6, ymm2, ymm6
         vpsrldq ymm2, ymm6, 4
 
@@ -81,10 +79,11 @@ get_checksum1_avx512_vnni:
         vpaddd  xmm6, xmm2, xmm6
         vmovd   [rcx], xmm6
         vpaddd  xmm1, xmm1, xmm0
-        vmovd   ecx, xmm1
-        add     eax, ecx
-        mov     [r8], eax
+        vmovd   eax, xmm1
+        add     r9d, eax
+        mov     [r8], r9d
 
+	.p2align 4
 
 .exit:
 	vzeroupper
