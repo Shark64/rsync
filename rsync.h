@@ -111,7 +111,7 @@
 			     == ((unsigned)(b2) & (unsigned)(mask)))
 
 /* Update this if you make incompatible changes and ALSO update the
- * SUBPROTOCOL_VERSION if it is not a final (offical) release. */
+ * SUBPROTOCOL_VERSION if it is not a final (official) release. */
 #define PROTOCOL_VERSION 31
 
 /* This is used when working on a new protocol version or for any unofficial
@@ -493,7 +493,6 @@ enum delret {
 #ifndef __TANDEM
 #define MAKEDEV(devmajor,devminor) makedev(devmajor,devminor)
 #else
-# include <sys/stat.h>
 # define major DEV_TO_MAJOR
 # define minor DEV_TO_MINOR
 # define MAKEDEV MAJORMINOR_TO_DEV
@@ -589,7 +588,7 @@ typedef unsigned int size_t;
 #define SUPPORT_ATIMES 1
 #endif
 
-#ifdef HAVE_GETATTRLIST
+#if defined HAVE_GETATTRLIST || defined __CYGWIN__
 #define SUPPORT_CRTIMES 1
 #endif
 

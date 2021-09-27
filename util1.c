@@ -27,6 +27,7 @@
 
 extern int dry_run;
 extern int module_id;
+extern int do_fsync;
 extern int protect_args;
 extern int modify_window;
 extern int relative_paths;
@@ -406,16 +407,28 @@ int copy_file(const char *source, const char *dest, int ofd, mode_t mode)
 
 	/* Source file might have shrunk since we fstatted it.
 	 * Cut off any extra preallocated zeros from dest file. */
-	if (offset < prealloc_len && do_ftruncate(ofd, offset) < 0) {
+	if (offset < prealloc_len) {
+#ifdef HAVE_FTRUNCATE
 		/* If we fail to truncate, the dest file may be wrong, so we
 		 * must trigger the "partial transfer" error. */
-		rsyserr(FERROR_XFER, errno, "ftruncate %s", full_fname(dest));
+		if (do_ftruncate(ofd, offset) < 0)
+			rsyserr(FERROR_XFER, errno, "ftruncate %s", full_fname(dest));
+#else
+		rprintf(FERROR_XFER, "no ftruncate for over-long pre-alloc: %s", full_fname(dest));
+#endif
+	}
+
+	if (do_fsync && fsync(ofd) < 0) {
+		int save_errno = errno;
+		rsyserr(FERROR, errno, "fsync failed on %s", full_fname(dest));
+		close(ofd);
+		errno = save_errno;
+		return -1;
 	}
 
 	if (close(ofd) < 0) {
 		int save_errno = errno;
-		rsyserr(FERROR_XFER, errno, "close failed on %s",
-			full_fname(dest));
+		rsyserr(FERROR_XFER, errno, "close failed on %s", full_fname(dest));
 		errno = save_errno;
 		return -1;
 	}
@@ -1349,7 +1362,7 @@ int same_time(time_t f1_sec, unsigned long f1_nsec, time_t f2_sec, unsigned long
 		return f1_sec == f2_sec;
 	if (modify_window < 0)
 		return f1_sec == f2_sec && f1_nsec == f2_nsec;
-	/* The nano seconds doesn't figure into these checks -- time windows don't care about that. */
+	/* The nanoseconds do not figure into these checks -- time windows don't care about that. */
 	if (f2_sec > f1_sec)
 		return f2_sec - f1_sec <= modify_window;
 	return f1_sec - f2_sec <= modify_window;

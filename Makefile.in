@@ -50,7 +50,7 @@ popt_OBJS=popt/findme.o  popt/popt.o  popt/poptconfig.o \
 	popt/popthelp.o popt/poptparse.o
 OBJS=$(OBJS1) $(OBJS2) $(OBJS3) @SIMD@ $(DAEMON_OBJ) $(LIBOBJ) @BUILD_ZLIB@ @BUILD_POPT@
 
-TLS_OBJ = tls.o syscall.o t_stub.o lib/compat.o lib/snprintf.o lib/permstring.o lib/sysxattrs.o @BUILD_POPT@
+TLS_OBJ = tls.o syscall.o util2.o t_stub.o lib/compat.o lib/snprintf.o lib/permstring.o lib/sysxattrs.o @BUILD_POPT@
 
 # Programs we must have to run the test cases
 CHECK_PROGS = rsync$(EXEEXT) tls$(EXEEXT) getgroups$(EXEEXT) getfsdev$(EXEEXT) \
@@ -138,13 +138,16 @@ git-version.h: mkgitver $(wildcard $(srcdir)/.git/logs/HEAD)
 	$(srcdir)/mkgitver
 
 simd-checksum-x86_64.o: simd-checksum-x86_64.cpp
-	@$(srcdir)/cmdormsg disable-simd $(CXX) -I. $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $(srcdir)/simd-checksum-x86_64.cpp
+	@$(srcdir)/cmd-or-msg disable-simd $(CXX) -I. $(CXXFLAGS) $(CPPFLAGS) -c -o $@ $(srcdir)/simd-checksum-x86_64.cpp
+
+simd-checksum-avx2.o: simd-checksum-avx2.S
+	@$(srcdir)/cmd-or-msg disable-asm $(CC) $(CFLAGS) --include=$(srcdir)/rsync.h -DAVX2_ASM -I. @NOEXECSTACK@ -c -o $@ $(srcdir)/simd-checksum-avx2.S
 
 simd-checksum-avx2.o: simd-checksum-avx2.S
 	@$(srcdir)/cmdormsg disable-asm $(CC) $(CFLAGS) --include=$(srcdir)/rsync.h -DAVX2_ASM -I. @NOEXECSTACK@ -c -o $@ $(srcdir)/simd-checksum-avx2.S
 
 lib/md5-asm-x86_64.o: lib/md5-asm-x86_64.S config.h lib/md-defines.h
-	@$(srcdir)/cmdormsg disable-asm $(CC) -I. @NOEXECSTACK@ -c -o $@ $(srcdir)/lib/md5-asm-x86_64.S
+	@$(srcdir)/cmd-or-msg disable-asm $(CC) -I. @NOEXECSTACK@ -c -o $@ $(srcdir)/lib/md5-asm-x86_64.S
 
 tls$(EXEEXT): $(TLS_OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(TLS_OBJ) $(LIBS)
@@ -158,7 +161,7 @@ getgroups$(EXEEXT): getgroups.o
 getfsdev$(EXEEXT): getfsdev.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ getfsdev.o $(LIBS)
 
-TRIMSLASH_OBJ = trimslash.o syscall.o t_stub.o lib/compat.o lib/snprintf.o
+TRIMSLASH_OBJ = trimslash.o syscall.o util2.o t_stub.o lib/compat.o lib/snprintf.o
 trimslash$(EXEEXT): $(TRIMSLASH_OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(TRIMSLASH_OBJ) $(LIBS)
 
@@ -174,7 +177,11 @@ gen: conf proto.h man git-version.h
 
 .PHONY: gensend
 gensend: gen
-	rsync -aic $(GENFILES) git-version.h $${SAMBA_HOST-samba.org}:/home/ftp/pub/rsync/generated-files/
+	if ! diff git-version.h $(srcdir)/gists/rsync-git-version.h >/dev/null; then \
+	    ./rsync -ai git-version.h $(srcdir)/gists/rsync-git-version.h && \
+	    (cd $(srcdir)/gists && git commit --allow-empty-message -m '' rsync-git-version.h && git push) ; \
+	fi
+	rsync -aic $(GENFILES) git-version.h $${SAMBA_HOST-samba.org}:/home/ftp/pub/rsync/generated-files/ || true
 
 aclocal.m4: $(srcdir)/m4/*.m4
 	aclocal -I $(srcdir)/m4
